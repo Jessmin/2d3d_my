@@ -20,3 +20,6 @@ while True:
         break
 cap.release()
 out.release()
+
+def readFrame():
+    pass

@@ -1,0 +1,2 @@
+def resizeFrame():
+    pass
