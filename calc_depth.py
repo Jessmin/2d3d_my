@@ -6,6 +6,7 @@ import numpy as np
 from torchvision import transforms
 from packaging.version import parse as parse_version
 import torch.autograd as autograd
+import cv2
 
 sys.path.append(path.join(path.dirname(__file__), '../..'))
 import logging
@@ -14,10 +15,47 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 gpuDevice = torch.device('cuda:0' if torch.cuda.is_available() else 'cpu')
-batchSize = 1
 
 
-def _process_batch_input(batchInput, model):
+def _process_depth_to_inpaint(npFrame: np.ndarray, npDepth: np.ndarray, maxDisparity,
+                              dispOffset=14):
+    useDilate = 3, 2
+    useGF = 2, 50
+
+    def do_dilate(np_depth):
+        kernel, iteration = useDilate
+        dilationKernal = np.ones((kernel, kernel), np_depth.dtype)
+        np_depth = cv2.dilate(np_depth, dilationKernal, iterations=iteration)
+        return np_depth
+
+    def do_gf(np_depth):
+        R, E = useGF
+        np_guided_img = npFrame
+        h, w = np_depth.shape
+        np_guided_img = np.ascontiguousarray(np_guided_img)
+        np_guided_img = cv2.resize(np_guided_img, (w, h))
+        outGF = cv2.ximgproc.guidedFilter(guided=np_guided_img, src=np_depth, radius=R, eps=E, dDepth=-1)
+        np_depth = outGF
+        return np_depth
+
+    npDepth = do_gf(do_dilate(npDepth))
+
+    # if mask is not None:
+    #     h, w = mask.shape
+    #     npDepth = cv2.resize(npDepth, (w, h))
+    #     npDepth[mask == 255] = subtitle_depth
+
+    npDepth = (npDepth / 10000 * maxDisparity)
+
+    # dispOffset
+    depth_for_inpaint = npDepth - dispOffset
+
+    if depth_for_inpaint.dtype != np.float32:
+        depth_for_inpaint = depth_for_inpaint.astype(np.float32)
+    return depth_for_inpaint
+
+
+def _process_batch_input(batchInput, model, config):
     transform = transforms.Compose([
         transforms.Normalize(mean=[0.485, 0.456, 0.406],
                              std=[0.229, 0.224, 0.225]),
@@ -37,23 +75,19 @@ def _process_batch_input(batchInput, model):
     depth = prediction_d.clone()
     prediction_d = prediction_d.cpu().numpy()
     depth_for_inpaint = []
-    # for i in range(len(batchInput)):
-    #     # useGF
-    #     npFrame = batchInput[i].cpu().numpy()
-    #     npFrame = np.transpose(npFrame, (1, 2, 0))
-    #     # _ = _process_depth_to_inpaint(npFrame=npFrame, npDepth=prediction_d[i], useDilate=useDilate,
-    #     #                               useGF=useGF,
-    #     #                               modelName=modelName, maxDisparity=maxDisparity,
-    #     #                               depth_mode=depth_mode, depth_scale=depthScale, mask=mask,
-    #     #                               dispaOffset=dispaOffset, subtitle_depth=subtitle_depth)
-    #     depth_for_inpaint.append(_)
+
+    for i in range(len(batchInput)):
+        # useGF
+        npFrame = batchInput[i].cpu().numpy()
+        npFrame = np.transpose(npFrame, (1, 2, 0))
+        _ = _process_depth_to_inpaint(npFrame=npFrame, npDepth=prediction_d[i], maxDisparity=config.maxDisparity,
+                                      dispOffset=config.dispOffset)
+        depth_for_inpaint.append(_)
     depth_for_inpaint = np.asarray(depth_for_inpaint)
     return depth, depth_for_inpaint
 
 
-def calcDepth(inputQ, outputQ):
-    maxDisparity = 40
-    dispaOffset = 14
+def calcDepth(inputQ, outputQ, config):
     useFloat16 = False
     batchInput = []
     elems = []
@@ -82,10 +116,10 @@ def calcDepth(inputQ, outputQ):
             batchInput.append(calcDepthTen)
             elems.append(qElem)
 
-        if len(batchInput) >= batchSize or (inputEof and len(batchInput) > 0):
+        if len(batchInput) >= config.batchSize or (inputEof and len(batchInput) > 0):
             batchInput = batchInput.type(torch.float16 if useFloat16 else torch.float32)
             # calc depth
-            depth, depth_for_inpaint = _process_batch_input(batchInput, model)
+            depth, depth_for_inpaint = _process_batch_input(batchInput, model, config)
             for i in range(len(depth)):
                 _qElem = elems[i]
                 _qElem['depth'] = depth[i]

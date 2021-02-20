@@ -105,7 +105,7 @@ class InpaintGenerator(BaseNetwork):
         masks = masks.view(b * t, 1, h, w)
         enc_feat = self.encoder(masked_frames.view(b * t, c, h, w))
         _, c, h, w = enc_feat.size()
-        masks = F.interpolate(masks, scale_factor=1.0 / 4)
+        masks = F.interpolate(masks, scale_factor=1.0 / 4, recompute_scale_factor=True)
         enc_feat = self.transformer(
             {'x': enc_feat, 'm': masks, 'b': b, 'c': c})['x']
         output = self.decoder(enc_feat)

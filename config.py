@@ -5,6 +5,5 @@ class Config(object):
         self.output_mono_width = None
         self.use_gpu_ids = '0'
         self.calc_depth_batch_size = 1
-
-
-
+        self.maxDisparity = 40
+        self.dispOffset = 14
