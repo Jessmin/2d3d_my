@@ -6,7 +6,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
-from models.sttn.core.spectral_norm import spectral_norm as _spectral_norm
+from model.sttn.core.spectral_norm import spectral_norm as _spectral_norm
 
 
 class BaseNetwork(nn.Module):
