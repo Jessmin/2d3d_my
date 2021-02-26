@@ -7,25 +7,6 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-# filepath = '/home/zhaohoj/Videos/龙门客栈-withSTTN.mp4'
-# cap = cv2.VideoCapture(filepath)
-# width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
-# height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
-# fps = cap.get(cv2.CAP_PROP_FPS)
-# total_cnt = cap.get(cv2.CAP_PROP_FRAME_COUNT)
-# # fourcc = cap.get(cv2.CAP_PROP_FOURCC)
-# fourcc = cv2.VideoWriter_fourcc('m', 'p', '4', 'v')
-#
-# out = cv2.VideoWriter('output.mp4', fourcc, fps, (width, height))
-#
-# while True:
-#     ret, frame = cap.read()
-#     if ret:
-#         out.write(frame)
-#     else:
-#         break
-# cap.release()
-# out.release()
 def compare(frame, pre_hist):
     gray = cv2.cvtColor(frame, cv2.COLOR_BGR2GRAY)
     n_pixel = frame.shape[0] * frame.shape[1]
@@ -38,8 +19,10 @@ def compare(frame, pre_hist):
     return diff, hist
 
 
-def readFrame(input_path, outputQ: queue):
-    threshold = 2
+def readFrame(config, outputQ: queue):
+    threshold = 0.5
+    input_path = config.input_file
+    max_frame = config.maxFrame
     cap = cv2.VideoCapture(input_path)
     width = int(cap.get(cv2.CAP_PROP_FRAME_WIDTH))
     height = int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT))
@@ -47,16 +30,18 @@ def readFrame(input_path, outputQ: queue):
     total_cnt = cap.get(cv2.CAP_PROP_FRAME_COUNT)
     _inputCnt = 0
     pre_hist = None
+
     while True:
         ret, frame = cap.read()
         if not ret:
-            outputQ.put('EOF')
             break
         diff, hist = compare(frame, pre_hist)
         pre_hist = hist
         is_seg = False
         if diff > threshold:
             is_seg = True
+        if max_frame>0 and _inputCnt > max_frame:
+            break
         qElem = {
             'index': _inputCnt,
             'decFrm': frame,
@@ -65,7 +50,9 @@ def readFrame(input_path, outputQ: queue):
             'fps': fps
         }
         _inputCnt += 1
+        # print(f'read frame:{_inputCnt}')
         outputQ.put(qElem)
     # end
+    outputQ.put('EOF')
     logger.info('end readFrame')
     cap.release()

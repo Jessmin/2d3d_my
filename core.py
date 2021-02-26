@@ -1,12 +1,12 @@
 import logging
 from concurrent.futures import ThreadPoolExecutor, TimeoutError, wait as ftWait
 import queue
-import os
 from config import Config
 from prepare_frame import readFrame
 from resize_frame import resizeFrame
 from calc_depth import calcDepth
 from inpaint_frame import inpaintFrame
+# from inpaint_test import inpaintFrame
 from output_frame import outputFrame
 
 logger = logging.getLogger(__name__)
@@ -15,7 +15,7 @@ logger.setLevel(logging.INFO)
 
 class Conv2d3dCore(object):
     def __init__(self, config: Config):
-        maxQueueSize = config.calc_depth_batch_size * 2
+        maxQueueSize = config.batchSize * 2
         self._readFrameOutputQ = queue.Queue(maxQueueSize)
         self._resizeOutputQ = queue.Queue(maxQueueSize)
         self._calcDepthOutputQ = queue.Queue(maxQueueSize)
@@ -38,7 +38,7 @@ class Conv2d3dCore(object):
         self._inEof = False
         self._taskExcep = None
 
-        task = self._executorReadFrame.submit(readFrame, self._readFrameOutputQ, config)
+        task = self._executorReadFrame.submit(readFrame, config, self._readFrameOutputQ)
         task.name = f'ReadZip-task-{0}'
         self._tasksReadFrame.append(task)
 
@@ -54,7 +54,7 @@ class Conv2d3dCore(object):
         task.name = f'Inpainting-Task-{0}'
         self._tasksInpainting.append(task)
 
-        task = self._executorOutput.submit(outputFrame, self._inpaintOutputQ, config.output_file)
+        task = self._executorOutput.submit(outputFrame, self._inpaintOutputQ, config)
         task.name = f'Output-Task-{0}'
         self._tasksOutput.append(task)
 
@@ -86,7 +86,7 @@ class Conv2d3dCore(object):
                                 self._readFrameOutputQ.put('EOF')
                         if task in self._tasksResize:
                             self._tasksResize.remove(task)
-                            if len(self._tasksResize) == 0:
+                            if len(self._tasksResize) == 0 and len(self._tasksReadFrame) == 0:
                                 print('All resize tasks are finished, shutting down resize executor...')
                                 self._executorResize.shutdown()
                                 print('Resize executor is down.')
@@ -94,7 +94,7 @@ class Conv2d3dCore(object):
                             # end
                         elif task in self._tasksDepthCalc:
                             self._tasksDepthCalc.remove(task)
-                            if len(self._tasksDepthCalc) == 0 and len(self._tasksInpainting):
+                            if len(self._tasksDepthCalc) == 0 and len(self._tasksInpainting) == 0:
                                 print('All depth-calc tasks are finished, shutting down depth-calc executor...')
                                 self._executorDepthCalc.shutdown()
                                 print('Depth-calc executor is down.')
@@ -102,7 +102,7 @@ class Conv2d3dCore(object):
                             # end
                         elif task in self._tasksInpainting:
                             self._tasksInpainting.remove(task)
-                            if len(self._tasksInpainting) == 0:
+                            if len(self._tasksInpainting) == 0 and len(self._tasksDepthCalc) == 0:
                                 print('All inpainting tasks are finished, shutting down inpainting executor...')
                                 self._executorInpainting.shutdown()
                                 print('Inpainting executor is down.')
@@ -111,7 +111,7 @@ class Conv2d3dCore(object):
                         # end
                         elif task in self._tasksOutput:
                             self._tasksOutput.remove(task)
-                            if len(self._tasksOutput) == 0:
+                            if len(self._tasksOutput) == 0 and len(self._tasksInpainting) == 0:
                                 print('All output tasks are finished,shutting down output executor...')
                                 self._executorOutput.shutdown()
                                 print('Output executor is down.')
@@ -123,6 +123,8 @@ class Conv2d3dCore(object):
                     continue
                 except Exception as e:
                     self._taskExcep = e
+                    import traceback
+                    traceback.print_exc()
                     break
                 # end
             # end

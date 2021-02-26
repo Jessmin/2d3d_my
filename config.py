@@ -4,10 +4,11 @@ class Config(object):
         self.calc_depth_width = 512
         self.output_mono_width = None
         self.use_gpu_ids = '0'
-        self.calc_depth_batch_size = 1
+        self.batchSize = 2
         self.maxDisparity = 40
         self.dispOffset = 14
         self.output_file = 'testout.mp4'
+        self.maxFrame = 0
 
 
 def getConfig(args):
@@ -19,3 +20,4 @@ def getConfig(args):
         raise ValueError(f'output_file')
     config.input_file = args.input_file
     config.output_file = args.output_file
+    return config

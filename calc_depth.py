@@ -6,6 +6,7 @@ import numpy as np
 from torchvision import transforms
 from packaging.version import parse as parse_version
 import torch.autograd as autograd
+from model.midas import midas_net
 import cv2
 
 sys.path.append(path.join(path.dirname(__file__), '../..'))
@@ -34,17 +35,11 @@ def _process_depth_to_inpaint(npFrame: np.ndarray, npDepth: np.ndarray, maxDispa
         h, w = np_depth.shape
         np_guided_img = np.ascontiguousarray(np_guided_img)
         np_guided_img = cv2.resize(np_guided_img, (w, h))
-        outGF = cv2.ximgproc.guidedFilter(guided=np_guided_img, src=np_depth, radius=R, eps=E, dDepth=-1)
+        outGF = cv2.ximgproc.guidedFilter(guide=np_guided_img, src=np_depth, radius=R, eps=E, dDepth=-1)
         np_depth = outGF
         return np_depth
 
     npDepth = do_gf(do_dilate(npDepth))
-
-    # if mask is not None:
-    #     h, w = mask.shape
-    #     npDepth = cv2.resize(npDepth, (w, h))
-    #     npDepth[mask == 255] = subtitle_depth
-
     npDepth = (npDepth / 10000 * maxDisparity)
 
     # dispOffset
@@ -70,8 +65,8 @@ def _process_batch_input(batchInput, model, config):
     else:
         # since torch version 1.7.0, transform function can directly work on batch images
         batchInput = transform(batchInput)
-    prediction_d = model.forward(batchInput)
-    prediction_d = prediction_d.detach()
+    with torch.no_grad():
+        prediction_d = model(batchInput)
     depth = prediction_d.clone()
     prediction_d = prediction_d.cpu().numpy()
     depth_for_inpaint = []
@@ -88,47 +83,62 @@ def _process_batch_input(batchInput, model, config):
 
 
 def calcDepth(inputQ, outputQ, config):
-    useFloat16 = False
-    batchInput = []
-    elems = []
-    inputEof = False
-    import torch
-    model = torch.hub.load("intel-isl/MiDaS", "MiDaS")
-    model = model.to(gpuDevice)
-    model.eval()
-    if useFloat16:
-        model.half()
-    # end
-    while True:
-        try:
-            qElem = inputQ.get(timeout=0.1)
-        except queue.Empty:
-            qElem = None
-        # end
-        if qElem == 'EOF':
-            inputEof = True
-            inputQ.put('EOF')
-            qElem = None
-        if qElem is not None:
-            calcDepthTen = qElem['calcDepthTen']
-            calcDepthTen = autograd.Variable(calcDepthTen.cuda(device=gpuDevice, non_blocking=True),
-                                             requires_grad=False)
-            batchInput.append(calcDepthTen)
-            elems.append(qElem)
+    try:
+        batchInput = []
+        elems = []
+        inputEof = False
+        # model = torch.hub.load("intel-isl/MiDaS", "MiDaS")
+        # model = model.to(gpuDevice)
+        # model.eval()
+        import os
+        checkpoint_dir = "/home/zhaohoj/Documents/checkpoint/MidaS/model-f6b98070.pt"
+        model = midas_net.MidasNet(path=checkpoint_dir, non_negative=True)
+        model = model.to(gpuDevice)
+        torch.backends.cudnn.enabled = True
+        torch.backends.cudnn.benchmark = True
+        model.eval()
 
-        if len(batchInput) >= config.batchSize or (inputEof and len(batchInput) > 0):
-            batchInput = batchInput.type(torch.float16 if useFloat16 else torch.float32)
-            # calc depth
-            depth, depth_for_inpaint = _process_batch_input(batchInput, model, config)
-            for i in range(len(depth)):
-                _qElem = elems[i]
-                _qElem['depth'] = depth[i]
-                _qElem['depth_for_inpaint'] = depth_for_inpaint[i]
-                outputQ.put(_qElem)
-            # clear
-            batchInput.clear()
-            elems.clear()
-        if inputEof:
-            break
-    logger.info('All calc Depth Donw')
+        print('load Midas Done ')
+        while True:
+            try:
+                qElem = inputQ.get(timeout=0.1)
+            except TimeoutError:
+                continue
+            except queue.Empty:
+                continue
+            # end
+            if qElem == 'EOF':
+                inputEof = True
+                qElem = None
+            if qElem is not None:
+                calcDepthTen = qElem['calcDepthTen']
+                calcDepthTen = autograd.Variable(calcDepthTen.cuda(device=gpuDevice, non_blocking=True),
+                                                 requires_grad=False)
+                ch = calcDepthTen.shape[-1]
+                frmHeight = calcDepthTen.shape[0]
+                frmWidth = calcDepthTen.shape[1]
+                calcDepthTen = calcDepthTen.view(-1, ch).transpose(1, 0).contiguous().view(ch, frmHeight, frmWidth)
+                batchInput.append(calcDepthTen)
+                elems.append(qElem)
+
+            if len(batchInput) >= config.batchSize or (inputEof and len(batchInput) > 0):
+                batchInput_for_calc = torch.stack(batchInput)
+                batchInput_for_calc = batchInput_for_calc.type(torch.float32) / 255.
+                # calc depth
+                depth, depth_for_inpaint = _process_batch_input(batchInput_for_calc, model, config)
+                for i in range(len(depth)):
+                    _qElem = elems[i]
+                    _qElem['depth'] = depth[i]
+                    _qElem['depth_for_inpaint'] = depth_for_inpaint[i]
+                    outputQ.put(_qElem)
+                    # print(f'calc depth:{_qElem["index"]}')
+                # clear
+                batchInput.clear()
+                elems.clear()
+            if inputEof:
+                break
+    except Exception:
+        import traceback
+        traceback.print_exc()
+    print('All calc Depth Donw')
     outputQ.put("EOF")

@@ -8,7 +8,7 @@ logger = logging.getLogger(__name__)
 logger.setLevel(logging.INFO)
 
 
-def resizeFrame(inputQ, outputQ):
+def resizeFrame(inputQ, outputQ,config):
     while True:
         try:
             qElem = inputQ.get(timeout=0.1)
@@ -17,16 +17,18 @@ def resizeFrame(inputQ, outputQ):
         except queue.Empty:
             continue
         if qElem == 'EOF':
+            print('end')
             break
         try:
             calcDepthWidth = 512
             calcDepthHeight = 288
             decFrm = qElem['decFrm']
             calcDepthFrm = cv2.resize(decFrm, (calcDepthWidth, calcDepthHeight))
+            calcDepthFrm = cv2.cvtColor(calcDepthFrm,cv2.COLOR_BGR2RGB)
             calcDepthTen = torch.from_numpy(np.asarray(calcDepthFrm))
             qElem['calcDepthTen'] = calcDepthTen
-            logger.info(f'Resize frame {qElem["index"]}')
             outputQ.put(qElem)
+            # print(f'Resize frame {qElem["index"]}')
         except Exception:
             import traceback
             traceback.print_exc()

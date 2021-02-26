@@ -4,8 +4,8 @@ import argparse
 from config import getConfig
 
 argParser = argparse.ArgumentParser()
-argParser.add_argument('--i', 'input_file')
-argParser.add_argument('--o', 'output_file')
+argParser.add_argument('--i', dest = 'input_file',default='/home/zhaohoj/Videos/龙门客栈00-05-00.mp4')
+argParser.add_argument('--o', dest = 'output_file',default='/home/zhaohoj/Videos/xx.mp4')
 args = argParser.parse_args()
 
 if __name__ == '__main__':
