@@ -1,10 +1,10 @@
 dict = {
-    "test": ("000725", "SZ")
+    "白银期货": ("AG2106", "SHF")
 }
 push_users = {
-    "self": "kyx6kNQZtoN8XkQXmjxyO1eMD"
+    "self": "kyx6kNQZtoN8XkQXmjxyO1eMD",
+    "fws": "g4Elz5ql3N8ZPgItJ0VVWdaah",
 }
-url = 'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData?symbol=sh000300&scale=5&ma=no&datalen=50'
 import requests
 import json
 import tushare as ts
@@ -24,7 +24,7 @@ def get_ma60(ts_code, today, saved_ma60_file):
             ma60 = file.item()[ts_code]
             if ma60 is not None:
                 return ma60
-    df = ts.pro_bar(ts_code=ts_code, start_date='20200101', end_date=today.strftime('%Y%m%d'), ma=[60])
+    df = ts.pro_bar(ts_code=ts_code, start_date='20200101', end_date=today.strftime('%Y%m%d'), ma=[60], asset='FT')
     if len(df) < 1:
         return None
     ma60 = df.iloc[0].loc['ma60']
@@ -38,21 +38,24 @@ def get_ma60(ts_code, today, saved_ma60_file):
 
 
 def get_latest_5min(url):
-    r = requests.get(url)
-    js = json.loads(r.text)
-    return js[-1]
+    r = requests.get(url).content
+    js = json.loads(r)
+    return js[0]
 
 
 def calc(ma60, latest_5min):
     # print(ma60)
+    # print(latest_5min)
+    low = latest_5min[3]
+    close = latest_5min[4]
     # print(latest_5min['day'])
     # print(latest_5min['open'])
     # print(latest_5min['high'])
     # print(latest_5min['low'])
     # print(latest_5min['close'])
     # print(latest_5min['volume'])
-    low = latest_5min['low']
-    close = latest_5min['close']
+    # low = latest_5min['low']
+    # close = latest_5min['close']
     if float(low) < float(ma60) < float(close):
         return True
     return False
@@ -71,28 +74,29 @@ def pushWechat(title, content):
 
 def main():
     today = datetime.date.today()
-    saved_ma60_file = f'{today}.npy'
-    title = '股票推送'
+    saved_ma60_file = f'{today}-FT.npy'
+    title = '期货推送'
     for name, v in dict.items():
         ts_code = f'{v[0]}.{v[1]}'
         ma60 = get_ma60(ts_code, today, saved_ma60_file)
         if ma60 is None:
             print('get failed')
             continue
-        ts_code = f'{v[1].lower()}{v[0]}'
-        url = f'https://quotes.sina.cn/cn/api/json_v2.php/CN_MarketDataService.getKLineData?symbol={ts_code}&scale=5&ma=no&datalen=50'
+        ts_code = f'{v[0].lower()}'
+        url = f'http://stock2.finance.sina.com.cn/futures/api/json.php/IndexService.getInnerFuturesMiniKLine5m?symbol={ts_code}'
         latest_5min = get_latest_5min(url)
         isPush = calc(ma60, latest_5min)
-        # if isPush:
-        msg = f'{name} 突破了五日线了！'
-        pushWechat(title, msg)
+        if isPush:
+            msg = f'期货:{name}－{ts_code} 五分钟线超过了60日线！'
+            pushWechat(title, msg)
 
 
-# ma60 = get_ma60('000725.SZ', today)
 if __name__ == '__main__':
     from threading import Timer
+
     # 记录当前时间
     while True:
-        sTimer = Timer(60*5, main)
+        print(f'now:{datetime.datetime.now()}')
+        sTimer = Timer(60 * 5, main)
         sTimer.start()
         sTimer.join()
