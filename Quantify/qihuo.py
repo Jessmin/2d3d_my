@@ -4,6 +4,7 @@ import tushare as ts
 import os
 import numpy as np
 import datetime
+import time
 
 dict = {
     "白银期货": ("AG2106", "SHF")
@@ -39,6 +40,7 @@ def get_ma60(ts_code, today, saved_ma60_file):
 
 
 def get_latest_5min(url):
+    time.sleep(0.1)
     r = requests.get(url).content
     try:
         js = json.loads(r)
@@ -106,6 +108,7 @@ def main():
 
 if __name__ == '__main__':
     latest_time = None
+
     # 记录当前时间
     print('start')
     while True:
@@ -116,5 +119,5 @@ if __name__ == '__main__':
             days = (now - latest_datetime).days
             if days == 0:
                 delta = (now - latest_datetime).seconds / 60
-        if latest_time is None or delta > 5:
+        if latest_time is None or 6 > delta > 5:
             latest_time = main()
