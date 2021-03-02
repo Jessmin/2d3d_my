@@ -113,6 +113,6 @@ if __name__ == '__main__':
             days = (now - latest_datetime).days
             if days == 0:
                 delta = (now - latest_datetime).seconds / 60
-        if latest_time is None or delta >= 1:
+        if latest_time is None or delta > 5:
             print('enter')
             latest_time = main()
