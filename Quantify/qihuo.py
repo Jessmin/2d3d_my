@@ -40,10 +40,13 @@ def get_ma60(ts_code, today, saved_ma60_file):
 
 def get_latest_5min(url):
     r = requests.get(url).content
-    js = json.loads(r)
-    if len(js) < 1:
+    try:
+        js = json.loads(r)
+        if len(js) < 1:
+            return None
+        return js[0]
+    except Exception:
         return None
-    return js[0]
 
 
 def calc(ma60, latest_5min):
@@ -114,5 +117,4 @@ if __name__ == '__main__':
             if days == 0:
                 delta = (now - latest_datetime).seconds / 60
         if latest_time is None or delta > 5:
-            print('enter')
             latest_time = main()
