@@ -61,7 +61,7 @@ def calc(ma60, latest_5min):
     # close = latest_5min['close']
     if float(low) < float(ma60) < float(close):
         return True, f'ma60:{ma60},latest_5min:{latest_5min}'
-    return True, None
+    return False, None
 
 
 def pushWechat(title, content):
@@ -104,6 +104,7 @@ def main():
 if __name__ == '__main__':
     latest_time = None
     # 记录当前时间
+    print('start')
     while True:
         now = datetime.datetime.now()
         delta = 0
