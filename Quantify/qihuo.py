@@ -117,7 +117,7 @@ if __name__ == '__main__':
         if latest_time is not None:
             latest_datetime = datetime.datetime.strptime(latest_time, '%Y-%m-%d %H:%M:%S')
             days = (now - latest_datetime).days
-            if days == 0:
+            if days >= 0:
                 delta = (now - latest_datetime).seconds / 60
         if latest_time is None or 6 > delta >= 5:
             print(f'delta:{delta}')
